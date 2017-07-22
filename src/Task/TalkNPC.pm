@@ -338,15 +338,43 @@ sub iterate {
 			return;
 		}
 		
+		# Wait x seconds.
+		if ($self->{steps}[0] =~ /^w(\d+)/i) {
+			my $time = $1;
+			debug "$self->{target}: Waiting for $time seconds...\n", 'ai_npcTalk';
+			$ai_v{'npc_talk'}{'time'} = time + $time;
+			$self->{time} = time + $time;
+			shift @{$self->{steps}};
+			return;
+			
+		# Run a command.
+		} elsif ($self->{steps}[0] =~ /^a=(.*)/i) {
+			my $command = $1;
+			my $timeout = $timeResponse - 4;
+			$timeout = 0 if $timeout < 0;
+			$ai_v{'npc_talk'}{'time'} = time + $timeout;
+			$self->{time} = time + $timeout;
+			Commands::run($command);
+			shift @{$self->{steps}};
+			return;
+		}
+		
+		if ($ai_v{'npc_talk'}{'talk'} ne 'next') {
+			while ($self->{steps}[0] =~ /^c/i) {
+				warning "Ignoring excessive use 'c' in conversation with npc.\n";
+				shift(@{$self->{steps}});
+			}
+		
 		#This is to make non-autotalkcont sequences compatible with autotalkcont ones
-		if ($ai_v{'npc_talk'}{'talk'} eq 'next' && $config{autoTalkCont}) {
+		} elsif ($ai_v{'npc_talk'}{'talk'} eq 'next' && $config{autoTalkCont}) {
 			if ( $self->noMoreSteps || $self->{steps}[0] !~ /^c/i ) {
 				unshift(@{$self->{steps}}, 'c');
 			}
 			debug "$self->{target}: Auto-continuing talking\n", 'ai_npcTalk';
+		}
 			
 		#This is done to restart the conversation (check if this is necessary)
-		} elsif ($ai_v{'npc_talk'}{'talk'} eq 'close' && $self->{steps}[0] =~ /x/i) {
+		if ($ai_v{'npc_talk'}{'talk'} eq 'close' && $self->{steps}[0] =~ /x/i) {
 			undef $ai_v{'npc_talk'}{'talk'};
 		}
 
@@ -364,7 +392,6 @@ sub iterate {
 			$self->{time} = time;
 		}
 		
-		my @bulkitemlist;
 		my $step = $self->{steps}[0];
 		my $current_talk_step = $ai_v{'npc_talk'}{'talk'};
 
@@ -384,26 +411,6 @@ sub iterate {
 		if ( $step =~ /^x/i ) {
 			debug "$self->{target}: Initiating the talk\n", 'ai_npcTalk';
 			$self->{target}->sendTalk;
-			
-		# Wait x seconds.
-		} elsif ($step =~ /^w(\d+)/i) {
-			my $time = $1;
-			debug "$self->{target}: Waiting for $time seconds...\n", 'ai_npcTalk';
-			$ai_v{'npc_talk'}{'time'} = time + $time;
-			$self->{time} = time + $time;
-			shift @{$self->{steps}};
-			return;
-			
-		# Run a command.
-		} elsif ( $step =~ /^a=(.*)/i ) {
-			my $command = $1;
-			my $timeout = $timeResponse - 4;
-			$timeout = 0 if $timeout < 0;
-			$ai_v{'npc_talk'}{'time'} = time + $timeout;
-			$self->{time} = time + $timeout;
-			Commands::run($command);
-			shift @{$self->{steps}};
-			return;
 		
 		# Select an answer
 		} elsif ($current_talk_step eq 'select') {
@@ -527,6 +534,7 @@ sub iterate {
 			
 			# Buy Items
 			if ($step =~ /^b(\d+),(\d+)/i) {
+				my @bulkitemlist;
 				while ($self->{steps}[0] =~ /^b(\d+),(\d+)/i){
 					my $index = $1;
 					my $amount = $2;
